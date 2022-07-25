@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import csv
 import math
 import statistics
@@ -230,7 +231,10 @@ def calc_usage_next_year(zaehlerstaende: List[Tuple[datetime, str, float, float]
             next_ts, _, _, _ = zaehlerstaende[index + 1 + last_index]
             if date_between_dates(day, ts, next_ts):
                 all_usage_means.append(mean)
-                usage_dict[day] = (meas, mean, True)
+                if day in [d[0] for d in zaehlerstaende]:
+                    usage_dict[day] = (meas, mean, True)
+                else:
+                    usage_dict[day] = (meas + (day-ts).days * mean, mean, True)
                 last_index = index + last_index
                 break
 
@@ -280,12 +284,31 @@ def main():
 
     f = {bez: [entry[2] for entry in usage_list.values()].count(False)/len([entry[2] for entry in usage_list.values()])
          for bez, usage_list in usage_next_year.items()}
-    print("Estimation ratio % of days")
+
+    print("estimation ratio (% of days estimated)")
     print(f)
     print("Verbauch kWh, EUR Arbeitspreis, EUR Grundpreis")
     print(invoice_value_next_year)
     print("sum EUR")
     print(sum([val[1] for val in invoice_value_next_year.values()]))
+
+    usage_next_year_cum = {}
+    for val in usage_next_year.values():
+        for day, data in val.items():
+            if day in usage_next_year_cum.keys():
+                usage_next_year_cum[day] = (usage_next_year_cum[day][0] + data[0], usage_next_year_cum[day][1] and data[2])
+            else:
+                usage_next_year_cum[day] = (data[0], data[2])
+    usage_next_year_cum_sum = max([d[0] for d in usage_next_year_cum.values()]) - min([d[0] for d in usage_next_year_cum.values()])
+    pass
+        #usage_next_year_cum[day] += meas
+    xv, yv, tv = zip(*[(x, y[0], y[1]) for x, y in usage_next_year_cum.items()])
+    min_y = min(yv)
+    yv = [v-min_y for v in yv]
+    plt.scatter(x=[x for index, x in enumerate(xv) if tv[index]], y=[y for index, y in enumerate(yv) if tv[index]], color='green')
+    plt.scatter(x=[x for index, x in enumerate(xv) if not tv[index]], y=[y for index, y in enumerate(yv) if not tv[index]], color='pink')
+
+    plt.show()
 
 
 if __name__ == '__main__':
