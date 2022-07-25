@@ -5,9 +5,7 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Union, Dict, Tuple
-import pandas as pd
 from datetime import datetime, timedelta
-import asyncio
 
 csv.register_dialect('csvrd', delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
 
@@ -106,37 +104,38 @@ def get_strompreise(zaehlernummern: Dict[str, List[str]]) -> Dict[
     return dict(d)
 
 
-def calc_usage_whole_year(start_date: datetime,
-                          end_date: datetime,
-                          zaehlerstaende_list: List[Tuple[datetime, str, float]]) -> float:
-    zaehlerstaende_list.sort(key=lambda k: k[0])
-
-    relevant_meas_indices = [index for index, data in enumerate(zaehlerstaende_list)
-                             if start_date <= data[0] <= end_date]
-    min_index, max_index = min(relevant_meas_indices), max(relevant_meas_indices)
-    if min_index > 0:
-        relevant_meas_indices = [min_index - 1] + relevant_meas_indices
-    if max_index < len(zaehlerstaende_list) - 2:
-        relevant_meas_indices.append(max_index + 1)
-    relevant_meas = zaehlerstaende_list[min(relevant_meas_indices):max(relevant_meas_indices) + 1]
-
-    usage_dict = {}
-    if start_date in [ts for ts, _, _ in zaehlerstaende_list]:
-        pass
-
-    for day in [start_date + timedelta(days=i) for i in range((end_date - start_date).days)]:
-        last_ts, last_zs, last_usage = None, None, None
-        for index, data in enumerate(zaehlerstaende_list):
-            ts, _, zs = data
-            if last_ts == day:
-                pass
-            elif last_ts is None:
-                last_ts = ts
-                last_zs = zs
-                last_usage = None
-                continue
-            if index >= len(zaehlerstaende_list) - 1:
-                pass
+#
+# def calc_usage_whole_year(start_date: datetime,
+#                           end_date: datetime,
+#                           zaehlerstaende_list: List[Tuple[datetime, str, float]]) -> float:
+#     zaehlerstaende_list.sort(key=lambda k: k[0])
+#
+#     relevant_meas_indices = [index for index, data in enumerate(zaehlerstaende_list)
+#                              if start_date <= data[0] <= end_date]
+#     min_index, max_index = min(relevant_meas_indices), max(relevant_meas_indices)
+#     if min_index > 0:
+#         relevant_meas_indices = [min_index - 1] + relevant_meas_indices
+#     if max_index < len(zaehlerstaende_list) - 2:
+#         relevant_meas_indices.append(max_index + 1)
+#     relevant_meas = zaehlerstaende_list[min(relevant_meas_indices):max(relevant_meas_indices) + 1]
+#
+#     usage_dict = {}
+#     if start_date in [ts for ts, _, _ in zaehlerstaende_list]:
+#         pass
+#
+#     for day in [start_date + timedelta(days=i) for i in range((end_date - start_date).days)]:
+#         last_ts, last_zs, last_usage = None, None, None
+#         for index, data in enumerate(zaehlerstaende_list):
+#             ts, _, zs = data
+#             if last_ts == day:
+#                 pass
+#             elif last_ts is None:
+#                 last_ts = ts
+#                 last_zs = zs
+#                 last_usage = None
+#                 continue
+#             if index >= len(zaehlerstaende_list) - 1:
+#                 pass
 
 
 def get_next_invoice_date(invoice_date: datetime) -> datetime:
@@ -185,7 +184,6 @@ def calc_prices_for_period(start_date: datetime, end_date: datetime,
 
 
 def add_months(date: datetime, months: int) -> datetime:
-    assert abs(months) <= 12
     if months == 0:
         return date
     year = date.year
@@ -214,8 +212,8 @@ def add_months(date: datetime, months: int) -> datetime:
     return datetime(year=year, month=month, day=day, hour=hour, minute=min, second=sec)
 
 
-def calc_usage_next_year(zaehlerstaende: List[Tuple[datetime, str, float, float]],
-                         rechnungsdatum: datetime) -> Dict[datetime, Tuple[float, float, bool]]:
+def calc_usage_period(zaehlerstaende: List[Tuple[datetime, str, float, float]],
+                      rechnungsdatum: datetime) -> Dict[datetime, Tuple[float, float, bool]]:
     days_list = calc_days_list(add_months(rechnungsdatum, -12), rechnungsdatum)
     last_index = 0
     usage_dict = {}
@@ -234,7 +232,7 @@ def calc_usage_next_year(zaehlerstaende: List[Tuple[datetime, str, float, float]
                 if day in [d[0] for d in zaehlerstaende]:
                     usage_dict[day] = (meas, mean, True)
                 else:
-                    usage_dict[day] = (meas + (day-ts).days * mean, mean, True)
+                    usage_dict[day] = (meas + (day - ts).days * mean, mean, True)
                 last_index = index + last_index
                 break
 
@@ -269,46 +267,110 @@ def main():
     zaehlerstaende = get_zaehlerstaende(zaehlernummern=zaehlernummern, offsets=offsets)
     zaehlerstaende_mod = {bez: add_usage(zs_data) for bez, zs_data in zaehlerstaende.items()}
 
-    period_start = {bez: add_months(rechnungsdatum, -12) for bez, rechnungsdatum in rechnungsdaten.items()}
-    period_end = {bez: rechnungsdatum for bez, rechnungsdatum in rechnungsdaten.items()}
+    # set start and end timestamps
+    period_start1 = {bez: add_months(rechnungsdatum, -12) for bez, rechnungsdatum in rechnungsdaten.items()}
+    period_end1 = {bez: rechnungsdatum for bez, rechnungsdatum in rechnungsdaten.items()}
+    period_start2 = {bez: add_months(rechnungsdatum, -24) for bez, rechnungsdatum in rechnungsdaten.items()}
+    period_end2 = {bez: add_months(rechnungsdatum, -12) for bez, rechnungsdatum in rechnungsdaten.items()}
 
-    usage_next_year = {bez: calc_usage_next_year(zaehlerstaende=zaehlerstaende_list,
-                                                 rechnungsdatum=rechnungsdaten[bez])
-                       for bez, zaehlerstaende_list in zaehlerstaende_mod.items()}
-    strom_prices_next_year = {bez: calc_prices_for_period(start_date=period_start[bez],
-                                                          end_date=period_end[bez],
-                                                          strompreise_list=strompreise[bez])
-                              for bez, strompreis_data in strompreise.items()}
-    invoice_value_next_year = {bez: calc_invoice_value_next_year(strom_prices_next_year[bez], usage_next_year[bez])
-                               for bez, usage_data in usage_next_year.items()}
+    period_start3 = {bez: add_months(rechnungsdatum, -36) for bez, rechnungsdatum in rechnungsdaten.items()}
+    period_end3 = {bez: add_months(rechnungsdatum, -24) for bez, rechnungsdatum in rechnungsdaten.items()}
 
-    f = {bez: [entry[2] for entry in usage_list.values()].count(False)/len([entry[2] for entry in usage_list.values()])
-         for bez, usage_list in usage_next_year.items()}
+    usage_period1, invoice_value_period1 = estimate_usage_period(period_start1, period_end1,
+                                                                 zaehlerstaende_mod=zaehlerstaende_mod,
+                                                                 strompreise=strompreise)
+    usage_period2, invoice_value_period2 = estimate_usage_period(period_start2, period_end2,
+                                                                 zaehlerstaende_mod=zaehlerstaende_mod,
+                                                                 strompreise=strompreise)
+    usage_period3, invoice_value_period3 = estimate_usage_period(period_start3, period_end3,
+                                                                 zaehlerstaende_mod=zaehlerstaende_mod,
+                                                                 strompreise=strompreise)
+
+    f = {bez: [entry[2] for entry in usage_list.values()].count(False) / len(
+        [entry[2] for entry in usage_list.values()])
+         for bez, usage_list in usage_period1.items()}
 
     print("estimation ratio (% of days estimated)")
     print(f)
     print("Verbauch kWh, EUR Arbeitspreis, EUR Grundpreis")
-    print(invoice_value_next_year)
+    print(invoice_value_period1)
     print("sum EUR")
-    print(sum([val[1] for val in invoice_value_next_year.values()]))
+    print(sum([val[1] for val in invoice_value_period1.values()]))
 
-    usage_next_year_cum = {}
-    for val in usage_next_year.values():
-        for day, data in val.items():
-            if day in usage_next_year_cum.keys():
-                usage_next_year_cum[day] = (usage_next_year_cum[day][0] + data[0], usage_next_year_cum[day][1] and data[2])
-            else:
-                usage_next_year_cum[day] = (data[0], data[2])
-    usage_next_year_cum_sum = max([d[0] for d in usage_next_year_cum.values()]) - min([d[0] for d in usage_next_year_cum.values()])
-    pass
-        #usage_next_year_cum[day] += meas
-    xv, yv, tv = zip(*[(x, y[0], y[1]) for x, y in usage_next_year_cum.items()])
-    min_y = min(yv)
-    yv = [v-min_y for v in yv]
-    plt.scatter(x=[x for index, x in enumerate(xv) if tv[index]], y=[y for index, y in enumerate(yv) if tv[index]], color='green')
-    plt.scatter(x=[x for index, x in enumerate(xv) if not tv[index]], y=[y for index, y in enumerate(yv) if not tv[index]], color='pink')
+    fig, ax = plt.subplots()
+    ax.set_title('Stromverbrauch - Prognose')
+    xv1, yv1, tv1 = prepare_values_usage_period(usage_period1)
+    xv2, yv2, tv2 = prepare_values_usage_period(usage_period2)
+    xv3, yv3, tv3 = prepare_values_usage_period(usage_period3)
+    label_true1 = f'{xv1[0].strftime("%Y-%m-%d")} to {xv1[-1].strftime("%Y-%m-%d")} '
+    label_false1 = f'{xv1[0].strftime("%Y-%m-%d")} to {xv1[-1].strftime("%Y-%m-%d")} estimated'
+    plot_usage_values(xv1, yv1, tv1, 'green', 'violet', label_true1, label_false1, 3, 2)
+
+    year_diff2 = xv1[0].year - xv2[0].year
+    label_true2 = f'{xv2[0].strftime("%Y")} to {xv2[-1].strftime("%Y")} '
+    label_false2 = f'{xv2[0].strftime("%Y")} to {xv2[-1].strftime("%Y")} estimated'
+    xv2_mod = [add_months(x, 12 * year_diff2) for x in xv2]
+    plot_usage_values(xv2_mod, yv2, tv2, 'pink', 'pink', label_true2, label_false2)
+
+    year_diff3 = xv1[0].year - xv3[0].year
+    label_true3 = f'{xv3[0].strftime("%Y")} to {xv3[-1].strftime("%Y")} '
+    label_false3 = f'{xv3[0].strftime("%Y")} to {xv3[-1].strftime("%Y")} estimated'
+    xv3_mod = [add_months(x, 12 * year_diff3) for x in xv3]
+    plot_usage_values(xv3_mod, yv3, tv3, 'lightgrey', 'lightgrey', label_true3, label_false3)
+
+    ax.legend(loc="upper left")
+    ax.set_xlabel('')
+    ax.set_ylabel('kWh kumuliert')
+    ax.legend(markerscale=10)
 
     plt.show()
+    pass
+
+
+def plot_usage_values(x, y, t, color_true, color_false, label_true, label_false, s_true=1, s_false=1):
+    if False in t:
+        plt.scatter(x=[xv[0] for xv in zip(x, t) if not xv[1]], y=[yv[0] for yv in zip(y, t) if not yv[1]],
+                    color=color_false, marker='.', s=s_false, label=label_false)
+    plt.scatter(x=[xv[0] for xv in zip(x, t) if xv[1]], y=[yv[0] for yv in zip(y, t) if yv[1]], color=color_true,
+                marker='.', s=s_true, label=label_true)
+
+
+
+def estimate_usage_period(period_start: Dict[str, datetime], period_end: Dict[str, datetime],
+                          zaehlerstaende_mod: Dict[str, List[Tuple[datetime, str, float, float]]],
+                          strompreise: Dict[str, List[Tuple[datetime, datetime, str, float, float, float]]]):
+    usage_period = {bez: calc_usage_period(zaehlerstaende=zaehlerstaende_list,
+                                           rechnungsdatum=period_end[bez])
+                    for bez, zaehlerstaende_list in zaehlerstaende_mod.items()}
+    electr_prices_period = {bez: calc_prices_for_period(start_date=period_start[bez],
+                                                        end_date=period_end[bez],
+                                                        strompreise_list=strompreise[bez])
+                            for bez, strompreis_data in strompreise.items()}
+    invoice_value_period = {bez: calc_invoice_value_next_year(electr_prices_period[bez], usage_period[bez])
+                            for bez, usage_data in usage_period.items()}
+
+    return usage_period, invoice_value_period
+
+
+def prepare_values_usage_period(usage_period):
+    usage_next_year_cum = {}
+    for val in usage_period.values():
+        for day, data in val.items():
+            if day in usage_next_year_cum.keys():
+                usage_next_year_cum[day] = (
+                    usage_next_year_cum[day][0] + data[0], usage_next_year_cum[day][1] and data[2])
+            else:
+                usage_next_year_cum[day] = (data[0], data[2])
+    usage_next_year_cum_sum = max([d[0] for d in usage_next_year_cum.values()]) - min(
+        [d[0] for d in usage_next_year_cum.values()])
+    pass
+    # usage_next_year_cum[day] += meas
+    xv, yv, tv = zip(*[(x, y[0], y[1]) for x, y in usage_next_year_cum.items()])
+
+    min_y = min(yv)
+    yv = [v - min_y for v in yv]
+
+    return xv, yv, tv
 
 
 if __name__ == '__main__':
