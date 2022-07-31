@@ -209,7 +209,14 @@ def add_months(date: datetime, months: int) -> datetime:
         month = month + months - 12
     else:
         month = month + months
-    return datetime(year=year, month=month, day=day, hour=hour, minute=min, second=sec)
+    try:
+        return_date = datetime(year=year, month=month, day=day, hour=hour, minute=min, second=sec)
+    except ValueError as err:
+        print(err)
+        if day == 29:
+            day = 28
+        return_date = datetime(year=year, month=month, day=day, hour=hour, minute=min, second=sec)
+    return return_date
 
 
 def calc_usage_period(zaehlerstaende: List[Tuple[datetime, str, float, float]],
@@ -304,7 +311,7 @@ def main():
     xv3, yv3, tv3 = prepare_values_usage_period(usage_period3)
     label_true1 = f'{xv1[0].strftime("%Y-%m-%d")} to {xv1[-1].strftime("%Y-%m-%d")} '
     label_false1 = f'{xv1[0].strftime("%Y-%m-%d")} to {xv1[-1].strftime("%Y-%m-%d")} estimated'
-    plot_usage_values(xv1, yv1, tv1, 'green', 'violet', label_true1, label_false1, 3, 2)
+    plot_usage_values(xv1, yv1, tv1, 'blue', 'violet', label_true1, label_false1, 3, 2)
 
     year_diff2 = xv1[0].year - xv2[0].year
     label_true2 = f'{xv2[0].strftime("%Y")} to {xv2[-1].strftime("%Y")} '
@@ -323,8 +330,7 @@ def main():
     ax.set_ylabel('kWh kumuliert')
     ax.legend(markerscale=10)
 
-    plt.show()
-    pass
+    fig.show()
 
 
 def plot_usage_values(x, y, t, color_true, color_false, label_true, label_false, s_true=1, s_false=1):
@@ -333,7 +339,6 @@ def plot_usage_values(x, y, t, color_true, color_false, label_true, label_false,
                     color=color_false, marker='.', s=s_false, label=label_false)
     plt.scatter(x=[xv[0] for xv in zip(x, t) if xv[1]], y=[yv[0] for yv in zip(y, t) if yv[1]], color=color_true,
                 marker='.', s=s_true, label=label_true)
-
 
 
 def estimate_usage_period(period_start: Dict[str, datetime], period_end: Dict[str, datetime],
@@ -375,3 +380,4 @@ def prepare_values_usage_period(usage_period):
 
 if __name__ == '__main__':
     main()
+    exit()
