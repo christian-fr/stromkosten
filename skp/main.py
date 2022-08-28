@@ -301,8 +301,9 @@ def main():
     print(f)
     print("Verbauch kWh, EUR Arbeitspreis, EUR Grundpreis")
     print(invoice_value_period1)
-    print("sum EUR")
-    print(sum([val[1] for val in invoice_value_period1.values()]))
+    print("\nestimated sums")
+    print(f'{round(sum([val[1] for val in invoice_value_period1.values()]),2)} EUR')
+    print(f'{round(sum([val[0] for val in invoice_value_period1.values()]))} kWh')
 
     fig, ax = plt.subplots()
     ax.set_title('Stromverbrauch - Prognose')
